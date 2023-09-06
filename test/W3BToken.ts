@@ -26,7 +26,7 @@ describe("W3BToken", function () {
       await w3BToken.mint(address1.address, 5);
       expect(await w3BToken.balanceOf(address1.address)).to.equal(5);
       await expect(
-        w3BToken.connect(address1).mint(address1.address, 5)
+        w3BToken.connect(address1).mint(address1.address, 1)
       ).to.be.revertedWith("W3B Token: caller is not the administrator");
     });
   });
