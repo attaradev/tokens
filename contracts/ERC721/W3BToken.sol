@@ -186,7 +186,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         require(
             tokens[_tokenId].owner == msg.sender ||
                 _operators[tokens[_tokenId].owner][msg.sender],
-            "ERC721: approve caller is not owner nor approved"
+            "ERC721: approve caller is not owner nor approved for all"
         );
         tokens[_tokenId].approved = _approved;
         emit Approval(msg.sender, _approved, _tokenId);
