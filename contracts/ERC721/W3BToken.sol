@@ -15,16 +15,16 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         string uri;
     }
 
-    bytes4 private constant _INTERFACE_ID_ERC721 = 0x80ac58cd;
-    bytes4 private constant _INTERFACE_ID_ERC721_METADATA = 0x5b5e139f;
-    bytes4 private constant _INTERFACE_ID_ERC721_RECEIVER = 0x150b7a02;
-    bytes4 private constant _INTERFACE_ID_ERC721_ENUMERABLE = 0x780e9d63;
+    bytes4 private constant INTERFACE_ID_ERC721 = 0x80ac58cd;
+    bytes4 private constant INTERFACE_ID_ERC721_METADATA = 0x5b5e139f;
+    bytes4 private constant INTERFACE_ID_ERC721_RECEIVER = 0x150b7a02;
+    bytes4 private constant INTERFACE_ID_ERC721_ENUMERABLE = 0x780e9d63;
     uint256 private tokenId;
     address private administrator;
     mapping(uint256 => Token) private tokens;
     mapping(bytes4 => bool) private registeredInterfaces;
     mapping(address => uint) private balances;
-    mapping(address => mapping(address => bool)) private _operators;
+    mapping(address => mapping(address => bool)) private operators;
 
     modifier notFalseInterfaceId(bytes4 interfaceId) {
         require(interfaceId != 0xffffffff, "ERC165: invalid interface id");
@@ -34,7 +34,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         require(
             tokens[_tokenId].owner == msg.sender ||
                 tokens[_tokenId].approved == msg.sender ||
-                _operators[tokens[_tokenId].owner][msg.sender],
+                operators[tokens[_tokenId].owner][msg.sender],
             "ERC721: transfer caller is not owner nor approved"
         );
         _;
@@ -64,10 +64,10 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
 
     constructor() {
         // register the supported interfaces to conform to ERC721 via ERC165
-        _registerInterface(_INTERFACE_ID_ERC721);
-        _registerInterface(_INTERFACE_ID_ERC721_METADATA);
-        _registerInterface(_INTERFACE_ID_ERC721_RECEIVER);
-        _registerInterface(_INTERFACE_ID_ERC721_ENUMERABLE);
+        _registerInterface(INTERFACE_ID_ERC721);
+        _registerInterface(INTERFACE_ID_ERC721_METADATA);
+        _registerInterface(INTERFACE_ID_ERC721_RECEIVER);
+        _registerInterface(INTERFACE_ID_ERC721_ENUMERABLE);
         administrator = msg.sender;
     }
 
@@ -139,7 +139,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         notToZeroAddress(_to)
         fromOwner(_tokenId, _from)
     {
-        if (registeredInterfaces[_INTERFACE_ID_ERC721_RECEIVER]) {
+        if (registeredInterfaces[INTERFACE_ID_ERC721_RECEIVER]) {
             bytes4 retval = ERC721TokenReceiver(_to).onERC721Received(
                 msg.sender,
                 _from,
@@ -147,7 +147,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
                 data
             );
             require(
-                retval == _INTERFACE_ID_ERC721_RECEIVER,
+                retval == INTERFACE_ID_ERC721_RECEIVER,
                 "ERC721: transfer to non ERC721Receiver implementer"
             );
         }
@@ -185,7 +185,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
     ) external payable override {
         require(
             tokens[_tokenId].owner == msg.sender ||
-                _operators[tokens[_tokenId].owner][msg.sender],
+                operators[tokens[_tokenId].owner][msg.sender],
             "ERC721: approve caller is not owner nor approved for all"
         );
         tokens[_tokenId].approved = _approved;
@@ -196,7 +196,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         address _operator,
         bool _approved
     ) external override {
-        _operators[msg.sender][_operator] = _approved;
+        operators[msg.sender][_operator] = _approved;
         emit ApprovalForAll(msg.sender, _operator, _approved);
     }
 
@@ -210,7 +210,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         address _owner,
         address _operator
     ) external view override returns (bool) {
-        return _operators[_owner][_operator];
+        return operators[_owner][_operator];
     }
 
     function name() external pure override returns (string memory _name) {
