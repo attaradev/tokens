@@ -7,7 +7,7 @@ import "./interfaces/ERC721Metadata.sol";
 import "./interfaces/ERC721TokenReceiver.sol";
 import "./interfaces/ERC721Enumerable.sol";
 
-abstract contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
+contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
     struct Token {
         uint256 id;
         address owner;
@@ -62,13 +62,13 @@ abstract contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         _;
     }
 
-    constructor(address _administrator) {
+    constructor() {
         // register the supported interfaces to conform to ERC721 via ERC165
         _registerInterface(_INTERFACE_ID_ERC721);
         _registerInterface(_INTERFACE_ID_ERC721_METADATA);
         _registerInterface(_INTERFACE_ID_ERC721_RECEIVER);
         _registerInterface(_INTERFACE_ID_ERC721_ENUMERABLE);
-        administrator = _administrator;
+        administrator = msg.sender;
     }
 
     function _registerInterface(
@@ -85,20 +85,22 @@ abstract contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         emit Transfer(_from, _to, _tokenId);
     }
 
-    function _mint(address _to, string memory _uri) internal {
+    function _mint(address _to) internal {
         tokenId += 1;
         tokens[tokenId] = Token({
             id: tokenId,
             owner: _to,
             approved: address(0),
-            uri: _uri
+            uri: "https://w3b.org/meta.json"
         });
         balances[_to] += 1;
         emit Transfer(address(0), _to, tokenId);
     }
 
-    function mint(address _to, string memory _uri) external onlyAdmin {
-        _mint(_to, _uri);
+    function mint(address _to, uint256 quantity) external onlyAdmin {
+        for (uint i = 0; i < quantity; i++) {
+            _mint(_to);
+        }
     }
 
     function supportsInterface(
