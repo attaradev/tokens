@@ -6,41 +6,37 @@ import "./interfaces/ERC721.sol";
 import "./interfaces/ERC721Metadata.sol";
 import "./interfaces/ERC721TokenReceiver.sol";
 import "./interfaces/ERC721Enumerable.sol";
+import "./helpers/Address.sol";
+import "./helpers/Counter.sol";
+import "./helpers/SafeMath.sol";
+import "./helpers/Tokens.sol";
 
 contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
-    struct Token {
-        uint256 id;
-        address owner;
-        address approved;
-        string uri;
-    }
+    using Address for address;
+    using SafeMath for uint256;
+    using Tokens for Tokens.TokenStorage;
 
-    bytes4 private constant INTERFACE_ID_ERC721 = 0x80ac58cd;
-    bytes4 private constant INTERFACE_ID_ERC721_METADATA = 0x5b5e139f;
-    bytes4 private constant INTERFACE_ID_ERC721_RECEIVER = 0x150b7a02;
-    bytes4 private constant INTERFACE_ID_ERC721_ENUMERABLE = 0x780e9d63;
-    uint256 private tokenId;
+    bytes4 private constant ERC721_ERC165 = 0x80ac58cd;
+    bytes4 private constant ERC721_METADATA = 0x5b5e139f;
+    bytes4 private constant ERC721_ENUMERABLE = 0x780e9d63;
+    bytes4 private constant ERC721_ACCEPTED = 0x150b7a02;
+
     address private administrator;
-    mapping(uint256 => Token) private tokens;
-    mapping(bytes4 => bool) private registeredInterfaces;
+    Tokens.TokenStorage private tokenStore;
     mapping(address => uint) private balances;
     mapping(address => mapping(address => bool)) private operators;
 
-    modifier notFalseInterfaceId(bytes4 interfaceId) {
-        require(interfaceId != 0xffffffff, "ERC165: invalid interface id");
-        _;
-    }
     modifier authorized(uint256 _tokenId) {
         require(
-            tokens[_tokenId].owner == msg.sender ||
-                tokens[_tokenId].approved == msg.sender ||
-                operators[tokens[_tokenId].owner][msg.sender],
+            tokenStore.tokens[_tokenId].owner == msg.sender ||
+                tokenStore.tokens[_tokenId].approved == msg.sender ||
+                operators[tokenStore.tokens[_tokenId].owner][msg.sender],
             "ERC721: transfer caller is not owner nor approved"
         );
         _;
     }
     modifier validToken(uint256 _tokenId) {
-        require(tokens[tokenId].owner != address(0), "ERC721: invalid token");
+        require(tokenStore.exists(_tokenId), "ERC721: invalid token");
         _;
     }
     modifier notToZeroAddress(address to) {
@@ -49,7 +45,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
     }
     modifier fromOwner(uint256 _tokenId, address _from) {
         require(
-            tokens[_tokenId].owner == _from,
+            tokenStore.tokens[_tokenId].owner == _from,
             "ERC721: transfer of token that is not owned"
         );
         _;
@@ -64,65 +60,36 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
 
     constructor() {
         // register the supported interfaces to conform to ERC721 via ERC165
-        _registerInterface(INTERFACE_ID_ERC721);
-        _registerInterface(INTERFACE_ID_ERC721_METADATA);
-        _registerInterface(INTERFACE_ID_ERC721_RECEIVER);
-        _registerInterface(INTERFACE_ID_ERC721_ENUMERABLE);
+        _registerInterface(ERC721_ERC165);
+        _registerInterface(ERC721_METADATA);
+        _registerInterface(ERC721_ENUMERABLE);
         administrator = msg.sender;
     }
 
-    function _registerInterface(
-        bytes4 interfaceID
-    ) internal notFalseInterfaceId(interfaceID) {
-        registeredInterfaces[interfaceID] = true;
-    }
-
     function _transfer(address _from, address _to, uint256 _tokenId) internal {
-        tokens[_tokenId].owner = _to;
-        balances[_from] -= 1;
-        balances[_to] += 1;
-
+        balances[_from] = balances[_from].sub(1);
+        balances[_to] = balances[_to].add(1);
+        tokenStore.transfer(_to, _tokenId);
         emit Transfer(_from, _to, _tokenId);
     }
 
-    function _mint(address _to) internal {
-        tokenId += 1;
-        tokens[tokenId] = Token({
-            id: tokenId,
-            owner: _to,
-            approved: address(0),
-            uri: "https://w3b.org/meta.json"
-        });
+    function mint(address _to) internal onlyAdmin {
+        uint256 id = tokenStore.mint(_to, "");
         balances[_to] += 1;
-        emit Transfer(address(0), _to, tokenId);
-    }
-
-    function mint(address _to, uint256 quantity) external onlyAdmin {
-        for (uint i = 0; i < quantity; i++) {
-            _mint(_to);
-        }
-    }
-
-    function supportsInterface(
-        bytes4 interfaceID
-    ) external view override notFalseInterfaceId(interfaceID) returns (bool) {
-        return registeredInterfaces[interfaceID];
+        emit Transfer(address(0), _to, id);
     }
 
     function balanceOf(
         address _owner
     ) external view override returns (uint256) {
-        require(
-            _owner != address(0),
-            "ERC721: balance query for the zero address"
-        );
+        require(_owner.isValid(), "ERC721: balance query for the zero address");
         return balances[_owner];
     }
 
     function ownerOf(
         uint256 _tokenId
     ) external view override validToken(_tokenId) returns (address) {
-        return tokens[_tokenId].owner;
+        return tokenStore.ownerOf(_tokenId);
     }
 
     function safeTransferFrom(
@@ -139,20 +106,11 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         notToZeroAddress(_to)
         fromOwner(_tokenId, _from)
     {
-        if (registeredInterfaces[INTERFACE_ID_ERC721_RECEIVER]) {
-            bytes4 retval = ERC721TokenReceiver(_to).onERC721Received(
-                msg.sender,
-                _from,
-                _tokenId,
-                data
-            );
-            require(
-                retval == INTERFACE_ID_ERC721_RECEIVER,
-                "ERC721: transfer to non ERC721Receiver implementer"
-            );
-        }
-
         _transfer(_from, _to, _tokenId);
+        require(
+            checkERC721Support(_from, _to, _tokenId, data),
+            "ERC721: transfer to non ERC721Receiver implementer"
+        );
     }
 
     function safeTransferFrom(
@@ -183,12 +141,12 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         address _approved,
         uint256 _tokenId
     ) external payable override {
+        address owner = tokenStore.ownerOf(_tokenId);
         require(
-            tokens[_tokenId].owner == msg.sender ||
-                operators[tokens[_tokenId].owner][msg.sender],
+            owner == msg.sender || operators[owner][msg.sender],
             "ERC721: approve caller is not owner nor approved for all"
         );
-        tokens[_tokenId].approved = _approved;
+        tokenStore.approve(_approved, _tokenId);
         emit Approval(msg.sender, _approved, _tokenId);
     }
 
@@ -203,7 +161,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
     function getApproved(
         uint256 _tokenId
     ) external view override validToken(_tokenId) returns (address) {
-        return tokens[_tokenId].approved;
+        return tokenStore.getApproved(_tokenId);
     }
 
     function isApprovedForAll(
@@ -224,17 +182,11 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
     function tokenURI(
         uint256 _tokenId
     ) external view override returns (string memory) {
-        return tokens[_tokenId].uri;
+        return tokenStore.tokenURI(_tokenId);
     }
 
     function totalSupply() external view override returns (uint256) {
-        uint counter = 0;
-        for (uint i = 0; i < tokenId; i++) {
-            if (tokens[i + 1].owner != address(0)) {
-                counter += 1;
-            }
-        }
-        return counter;
+        return tokenStore.totalSupply();
     }
 
     function tokenOfOwnerByIndex(
@@ -251,15 +203,24 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
     function tokenByIndex(
         uint256 _index
     ) external view override returns (uint256) {
-        uint currentIndex = 0;
-        for (uint i = 0; i < tokenId; i++) {
-            if (tokens[i + 1].owner != address(0)) {
-                if (currentIndex == _index) {
-                    return i + 1;
-                }
-                currentIndex += 1;
-            }
+        return tokenStore.tokenByIndex(_index);
+    }
+
+    function checkERC721Support(
+        address _from,
+        address _to,
+        uint256 _tokenId,
+        bytes memory _data
+    ) private returns (bool) {
+        if (!_to.isContract()) {
+            return true;
         }
-        revert("ERC721Enumerable: global index out of bounds");
+        bytes4 returnData = ERC721TokenReceiver(_to).onERC721Received(
+            msg.sender,
+            _from,
+            _tokenId,
+            _data
+        );
+        return returnData == ERC721_ACCEPTED;
     }
 }
