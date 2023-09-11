@@ -73,7 +73,7 @@ contract W3BToken is ERC165, ERC721, ERC721Metadata, ERC721Enumerable {
         emit Transfer(_from, _to, _tokenId);
     }
 
-    function mint(address _to) internal onlyAdmin {
+    function mint(address _to) external onlyAdmin {
         uint256 id = tokenStore.mint(_to, "");
         balances[_to] += 1;
         emit Transfer(address(0), _to, id);

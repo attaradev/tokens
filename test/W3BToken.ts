@@ -23,10 +23,10 @@ describe("W3BToken", function () {
         deployW3BTokenFixture
       );
       const [address1] = addresses;
-      await w3BToken.mint(address1.address, 5);
-      expect(await w3BToken.balanceOf(address1.address)).to.equal(5);
+      await w3BToken.mint(address1.address);
+      expect(await w3BToken.balanceOf(address1.address)).to.equal(1);
       await expect(
-        w3BToken.connect(address1).mint(address1.address, 1)
+        w3BToken.connect(address1).mint(address1.address)
       ).to.be.revertedWith("W3B Token: caller is not the administrator");
     });
   });
