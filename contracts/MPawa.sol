@@ -7,17 +7,20 @@ import "./interfaces/ERC1155TokenReceiver.sol";
 import "./helpers/Address.sol";
 import "./helpers/Counter.sol";
 import "./helpers/SafeMath.sol";
+import "./helpers/Tokens.sol";
 
 contract MPawa is ERC165, ERC1155 {
-    using Counter for Counter.Value;
-    using SafeMath for uint256;
     using Address for address;
+    using Counter for Counter.Value;
+    using Tokens for Tokens.TokenStorage;
+    using SafeMath for uint256;
 
     bytes4 public constant ERC1155_ERC165 = 0xd9b67a26;
     bytes4 public constant ERC1155_ACCEPTED = 0xf23a6e61;
     bytes4 public constant ERC1155_BATCH_ACCEPTED = 0xbc197c81;
 
     address private administrator;
+    Tokens.TokenStorage private tokenStore;
 
     // token owner => operator => approved
     mapping(address => mapping(address => bool)) private operators;
@@ -38,6 +41,10 @@ contract MPawa is ERC165, ERC1155 {
         );
         _;
     }
+    modifier whenNotZeroAddress(address _address) {
+        require(_address != address(0), "ERC1155: zero address");
+        _;
+    }
 
     constructor() {
         _registerInterface(ERC1155_ERC165);
@@ -54,10 +61,25 @@ contract MPawa is ERC165, ERC1155 {
         balances[_to][_id] = balances[_to][_id].add(_value);
     }
 
+    function mint(
+        address _to,
+        string memory _uri,
+        uint256 _value
+    ) external onlyAdmin whenNotZeroAddress(_to) {
+        require(_value > 0, "ERC1155: mint amount must be greater than zero");
+        uint256 id = tokenStore.mint(_to, _uri);
+        balances[_to][id] = balances[_to][id].add(_value);
+        emit TransferSingle(address(0), msg.sender, _to, id, _value);
+    }
+
     function balanceOf(
         address _owner,
         uint256 _id
     ) external view override returns (uint256) {
+        require(
+            _owner.isValid(),
+            "ERC1155: balance query for the zero address"
+        );
         return balances[_owner][_id];
     }
 
@@ -71,6 +93,10 @@ contract MPawa is ERC165, ERC1155 {
         );
         uint256[] memory _balances = new uint256[](_owners.length);
         for (uint256 i = 0; i < _owners.length; i++) {
+            require(
+                _owners[i].isValid(),
+                "ERC1155: balance query for the zero address"
+            );
             _balances[i] = balances[_owners[i]][_ids[i]];
         }
         return _balances;
@@ -115,7 +141,7 @@ contract MPawa is ERC165, ERC1155 {
             _from == msg.sender || operators[_from][msg.sender],
             "ERC1155: transfer caller is not owner or approved operator"
         );
-        require(_to != address(0), "ERC1155: transfer to the zero address");
+        require(_to.isValid(), "ERC1155: transfer to the zero address");
         require(
             _ids.length == _values.length,
             "ERC1155: ids and values length mismatch"
